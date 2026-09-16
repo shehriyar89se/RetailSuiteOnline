@@ -10,14 +10,31 @@
     bool _loading = true;
     bool _isAdmin;
     List<LedgerRow> _entries = new();
+    List<AccountOption> _accounts = new();
 
     // Add-entry form
     string  _newType        = "Expense";
     DateTime _newDate       = DateTime.Today;
+    Guid?   _newAccountId;
     string  _newParty       = string.Empty;
     string  _newDescription = string.Empty;
     decimal? _newAmount;
     bool    _adding;
+
+    // The Chart-of-Accounts type that matches each ledger entry type — Expense
+    // entries book to an Expense account, Receivable to an Asset account (e.g.
+    // "Accounts Receivable"), Payable to a Liability account (e.g. "Accounts
+    // Payable"). The chart doesn't have finer-grained AR/AP subtypes, so this
+    // is the closest honest mapping onto the existing model.
+    static string AccountTypeFor(string entryType) => entryType switch
+    {
+        "Expense"    => "Expense",
+        "Receivable" => "Asset",
+        _            => "Liability"
+    };
+
+    IEnumerable<AccountOption> AccountsForNewEntry =>
+        _accounts.Where(a => a.AccountType == AccountTypeFor(_newType));
 
     // Filter
     string _filterType = string.Empty; // "" = all
@@ -30,7 +47,36 @@
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender && _isAdmin)
+        {
+            await LoadAccountsAsync();
             await LoadAsync();
+        }
+    }
+
+    async Task LoadAccountsAsync()
+    {
+        try
+        {
+            var json = await Http.GetStringAsync("api/accounts?active=true");
+            using var doc = JsonDocument.Parse(json);
+            var arr = doc.RootElement.TryGetProperty("data", out var d) ? d : doc.RootElement;
+
+            _accounts.Clear();
+            if (arr.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var a in arr.EnumerateArray())
+                {
+                    _accounts.Add(new AccountOption
+                    {
+                        Id          = a.GetProperty("id").GetGuid(),
+                        Code        = a.GetProperty("code").GetString() ?? "",
+                        Name        = a.GetProperty("name").GetString() ?? "",
+                        AccountType = a.GetProperty("accountType").GetString() ?? ""
+                    });
+                }
+            }
+        }
+        catch (Exception ex) { Toast.Show($"Error loading chart of accounts: {ex.Message}"); }
     }
 
     async Task LoadAsync()
@@ -55,6 +101,8 @@
                         Id          = e.GetProperty("id").GetGuid(),
                         EntryDate   = e.GetProperty("entryDate").GetDateTime(),
                         Type        = e.GetProperty("type").GetString() ?? "",
+                        AccountCode = e.TryGetProperty("accountCode", out var ac) && ac.ValueKind == JsonValueKind.String ? ac.GetString() : null,
+                        AccountName = e.TryGetProperty("accountName", out var an) && an.ValueKind == JsonValueKind.String ? an.GetString() : null,
                         PartyName   = e.TryGetProperty("partyName", out var pn) && pn.ValueKind == JsonValueKind.String ? pn.GetString() : null,
                         Description = e.GetProperty("description").GetString() ?? "",
                         Amount      = e.GetProperty("amount").GetDecimal(),
@@ -70,6 +118,11 @@
 
     async Task AddEntryAsync()
     {
+        if (!_newAccountId.HasValue)
+        {
+            Toast.Show("Select an account.");
+            return;
+        }
         if (string.IsNullOrWhiteSpace(_newDescription))
         {
             Toast.Show("Description is required.");
@@ -93,6 +146,7 @@
             {
                 entryDate   = _newDate,
                 type        = _newType,
+                accountId   = _newAccountId.Value,
                 partyName   = _newType == "Expense" ? null : _newParty,
                 description = _newDescription,
                 amount      = _newAmount.Value
@@ -101,6 +155,7 @@
             if (res.IsSuccessStatusCode)
             {
                 Toast.Show("Entry added.");
+                _newAccountId = null;
                 _newParty = string.Empty;
                 _newDescription = string.Empty;
                 _newAmount = null;
@@ -160,10 +215,20 @@
         public Guid     Id          { get; set; }
         public DateTime EntryDate   { get; set; }
         public string   Type        { get; set; } = "";
+        public string?  AccountCode { get; set; }
+        public string?  AccountName { get; set; }
         public string?  PartyName   { get; set; }
         public string   Description { get; set; } = "";
         public decimal  Amount      { get; set; }
         public bool     IsSettled   { get; set; }
+    }
+
+    class AccountOption
+    {
+        public Guid   Id          { get; set; }
+        public string Code        { get; set; } = "";
+        public string Name        { get; set; } = "";
+        public string AccountType { get; set; } = "";
     }
 }
 
@@ -202,7 +267,7 @@ else
     <div class="card" style="margin-bottom:20px;max-width:480px;">
         <h4 style="margin-bottom:12px;">Add entry</h4>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
-            <select class="input" style="width:auto;" @bind="_newType">
+            <select class="input" style="width:auto;" @bind="_newType" @bind:after="() => _newAccountId = null">
                 <option value="Expense">Expense</option>
                 <option value="Receivable">Receivable (customer owes)</option>
                 <option value="Payable">Payable (owed to vendor)</option>
@@ -210,6 +275,25 @@ else
             <input class="input" type="date" style="width:auto;" value="@_newDate.ToString("yyyy-MM-dd")"
                    @onchange="e => _newDate = DateTime.TryParse(e.Value?.ToString(), out var d) ? d : DateTime.Today" />
         </div>
+
+        <label style="display:block;font-size:12px;font-weight:600;color:#6b7280;margin-bottom:4px;">
+            Account (@AccountTypeFor(_newType)) *
+        </label>
+        <select class="input full" style="margin-bottom:8px;"
+                value="@_newAccountId" @onchange="e => _newAccountId = Guid.TryParse(e.Value?.ToString(), out var id) ? id : (Guid?)null">
+            <option value="">— Select account —</option>
+            @foreach (var a in AccountsForNewEntry)
+            {
+                <option value="@a.Id">@a.Code — @a.Name</option>
+            }
+        </select>
+        @if (!AccountsForNewEntry.Any())
+        {
+            <p style="font-size:11px;color:#b45309;margin:0 0 8px;">
+                No @AccountTypeFor(_newType) accounts yet — add one under Accounting → Chart of accounts.
+            </p>
+        }
+
         @if (_newType != "Expense")
         {
             <input class="input full" placeholder="@(_newType == "Receivable" ? "Customer name *" : "Vendor name *")"
@@ -253,6 +337,7 @@ else
                     <tr>
                         <th>Date</th>
                         <th>Type</th>
+                        <th>Account</th>
                         <th>Party</th>
                         <th>Description</th>
                         <th>Amount</th>
@@ -276,6 +361,7 @@ else
                                     @row.Type
                                 </span>
                             </td>
+                            <td style="color:#6b7280;font-size:13px;">@(row.AccountCode != null ? $"{row.AccountCode} — {row.AccountName}" : "—")</td>
                             <td>@(row.PartyName ?? "—")</td>
                             <td>@row.Description</td>
                             <td>Rs @row.Amount.ToString("N2")</td>

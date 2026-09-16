@@ -49,6 +49,9 @@ public class DailyLedgerController : ControllerBase
                 e.Id,
                 e.EntryDate,
                 Type = e.Type.ToString(),
+                e.AccountId,
+                AccountCode = _db.Accounts.Where(a => a.Id == e.AccountId).Select(a => a.Code).FirstOrDefault(),
+                AccountName = _db.Accounts.Where(a => a.Id == e.AccountId).Select(a => a.Name).FirstOrDefault(),
                 e.PartyName,
                 e.Description,
                 e.Amount,
@@ -79,12 +82,17 @@ public class DailyLedgerController : ControllerBase
             return BadRequest(ApiResponse<object>.Fail(
                 type == LedgerEntryType.Receivable ? "Customer name is required." : "Vendor name is required."));
 
+        var account = await _db.Accounts.FirstOrDefaultAsync(a => a.Id == request.AccountId && a.IsActive);
+        if (account == null)
+            return BadRequest(ApiResponse<object>.Fail("Select a valid account."));
+
         try
         {
             var entry = new DailyLedgerEntry(
                 _currentUser.TenantId,
                 request.EntryDate ?? DateTime.UtcNow,
                 type,
+                request.AccountId,
                 request.PartyName,
                 request.Description,
                 request.Amount,
@@ -98,6 +106,9 @@ public class DailyLedgerController : ControllerBase
                 entry.Id,
                 entry.EntryDate,
                 Type = entry.Type.ToString(),
+                entry.AccountId,
+                AccountCode = account.Code,
+                AccountName = account.Name,
                 entry.PartyName,
                 entry.Description,
                 entry.Amount,
@@ -145,9 +156,10 @@ public class DailyLedgerController : ControllerBase
 
 public class CreateLedgerEntryRequest
 {
-    public DateTime? EntryDate  { get; set; }
-    public string    Type       { get; set; } = string.Empty;
-    public string?   PartyName  { get; set; }
+    public DateTime? EntryDate   { get; set; }
+    public string    Type        { get; set; } = string.Empty;
+    public Guid      AccountId   { get; set; }
+    public string?   PartyName   { get; set; }
     public string    Description { get; set; } = string.Empty;
-    public decimal   Amount     { get; set; }
+    public decimal   Amount      { get; set; }
 }

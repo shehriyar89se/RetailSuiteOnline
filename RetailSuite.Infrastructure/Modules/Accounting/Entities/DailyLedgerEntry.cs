@@ -15,6 +15,13 @@ public class DailyLedgerEntry : TenantEntity
     public DateTime EntryDate       { get; private set; }
     public LedgerEntryType Type     { get; private set; }
 
+    /// <summary>The Chart-of-Accounts row this entry books against — an Expense
+    /// account for Type.Expense, an Asset (Accounts Receivable) account for
+    /// Type.Receivable, a Liability (Accounts Payable) account for Type.Payable.
+    /// Picking from the real chart instead of free text keeps this log's
+    /// categories consistent with the formal accounting side.</summary>
+    public Guid     AccountId       { get; private set; }
+
     /// <summary>Customer name for Receivable, vendor name for Payable. Null for Expense.</summary>
     public string? PartyName        { get; private set; }
     public string  Description      { get; private set; } = string.Empty;
@@ -30,9 +37,11 @@ public class DailyLedgerEntry : TenantEntity
     private DailyLedgerEntry() { }
 
     public DailyLedgerEntry(
-        Guid tenantId, DateTime entryDate, LedgerEntryType type,
+        Guid tenantId, DateTime entryDate, LedgerEntryType type, Guid accountId,
         string? partyName, string description, decimal amount, Guid? createdByUserId)
     {
+        if (accountId == Guid.Empty)
+            throw new ArgumentException("Account is required.", nameof(accountId));
         if (amount <= 0)
             throw new ArgumentException("Amount must be greater than zero.", nameof(amount));
         if (string.IsNullOrWhiteSpace(description))
@@ -43,6 +52,7 @@ public class DailyLedgerEntry : TenantEntity
         TenantId        = tenantId;
         EntryDate       = entryDate.Date;
         Type            = type;
+        AccountId       = accountId;
         PartyName       = string.IsNullOrWhiteSpace(partyName) ? null : partyName.Trim();
         Description     = description.Trim();
         Amount          = amount;

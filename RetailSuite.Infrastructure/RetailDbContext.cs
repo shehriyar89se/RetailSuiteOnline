@@ -768,6 +768,7 @@ public class RetailDbContext : DbContext
             b.Property(e => e.PartyName).HasMaxLength(200);
             b.Property(e => e.Description).IsRequired().HasMaxLength(500);
             b.HasIndex(e => new { e.TenantId, e.EntryDate });
+            b.HasOne<Account>().WithMany().HasForeignKey(e => e.AccountId);
         });
 
         // =====================================================

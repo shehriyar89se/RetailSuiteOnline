@@ -1870,6 +1870,9 @@ namespace RetailSuite.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<decimal>("Amount")
                         .HasColumnType("decimal(18,2)");
 
@@ -1907,6 +1910,8 @@ namespace RetailSuite.Infrastructure.Migrations
                         .HasColumnType("int");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("AccountId");
 
                     b.HasIndex("TenantId", "EntryDate");
 
@@ -2804,6 +2809,15 @@ namespace RetailSuite.Infrastructure.Migrations
                     b.HasOne("RetailSuite.Modules.Catalog.Entities.ProductVariant", null)
                         .WithMany()
                         .HasForeignKey("ProductVariantId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("RetailSuite.Modules.Accounting.Entities.DailyLedgerEntry", b =>
+                {
+                    b.HasOne("RetailSuite.Modules.Accounting.Entities.Account", null)
+                        .WithMany()
+                        .HasForeignKey("AccountId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
                 });
