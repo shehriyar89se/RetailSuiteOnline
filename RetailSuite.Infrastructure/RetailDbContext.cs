@@ -74,6 +74,7 @@ public class RetailDbContext : DbContext
     public DbSet<JournalEntry> JournalEntries => Set<JournalEntry>();
     public DbSet<JournalEntryLine> JournalEntryLines => Set<JournalEntryLine>();
     public DbSet<Payment> Payments => Set<Payment>();
+    public DbSet<DailyLedgerEntry> DailyLedgerEntries => Set<DailyLedgerEntry>();
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<User> Users => Set<User>();
     public DbSet<UserPermission> UserPermissions => Set<UserPermission>();
@@ -756,6 +757,17 @@ public class RetailDbContext : DbContext
                 .HasMaxLength(100);
             b.Property(p => p.TransactionReference)
                 .HasMaxLength(200);
+        });
+
+        modelBuilder.Entity<DailyLedgerEntry>(b =>
+        {
+            b.ToTable("DailyLedgerEntries");
+            b.HasKey(e => e.Id);
+            b.Property(e => e.Amount).HasColumnType("decimal(18,2)");
+            b.Property(e => e.Type).HasConversion<int>();
+            b.Property(e => e.PartyName).HasMaxLength(200);
+            b.Property(e => e.Description).IsRequired().HasMaxLength(500);
+            b.HasIndex(e => new { e.TenantId, e.EntryDate });
         });
 
         // =====================================================

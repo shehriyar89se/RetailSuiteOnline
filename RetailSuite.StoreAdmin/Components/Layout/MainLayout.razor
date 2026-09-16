@@ -127,6 +127,10 @@ else
                             <NavLink href="@AP("accounting/journal-entries")">Journal entries</NavLink>
                             <NavLink href="@AP("accounting/chart-of-accounts")">Chart of accounts</NavLink>
                             <NavLink href="@AP("accounting/post-journal")">+ Post manual entry</NavLink>
+                            @if (Auth.IsAdmin)
+                            {
+                                <NavLink href="@AP("accounting/daily-ledger")">Daily ledger</NavLink>
+                            }
                         </div>
                     }
                 }

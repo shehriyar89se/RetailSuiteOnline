@@ -1,0 +1,307 @@
+@page "/{TenantSlug}/admin/accounting/daily-ledger"
+@inherits AdminPageBase
+@inject HttpClient Http
+@inject AuthService AuthSvc
+@inject ToastService Toast
+@inject IJSRuntime JS
+@using System.Text.Json
+
+@code {
+    bool _loading = true;
+    bool _isAdmin;
+    List<LedgerRow> _entries = new();
+
+    // Add-entry form
+    string  _newType        = "Expense";
+    DateTime _newDate       = DateTime.Today;
+    string  _newParty       = string.Empty;
+    string  _newDescription = string.Empty;
+    decimal? _newAmount;
+    bool    _adding;
+
+    // Filter
+    string _filterType = string.Empty; // "" = all
+
+    protected override void OnInitialized()
+    {
+        _isAdmin = AuthSvc.IsAdmin;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && _isAdmin)
+            await LoadAsync();
+    }
+
+    async Task LoadAsync()
+    {
+        _loading = true;
+        StateHasChanged();
+        try
+        {
+            var url = "api/daily-ledger";
+            if (!string.IsNullOrEmpty(_filterType)) url += $"?type={_filterType}";
+            var json = await Http.GetStringAsync(url);
+            using var doc = JsonDocument.Parse(json);
+            var arr = doc.RootElement.TryGetProperty("data", out var d) ? d : doc.RootElement;
+
+            _entries.Clear();
+            if (arr.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var e in arr.EnumerateArray())
+                {
+                    _entries.Add(new LedgerRow
+                    {
+                        Id          = e.GetProperty("id").GetGuid(),
+                        EntryDate   = e.GetProperty("entryDate").GetDateTime(),
+                        Type        = e.GetProperty("type").GetString() ?? "",
+                        PartyName   = e.TryGetProperty("partyName", out var pn) && pn.ValueKind == JsonValueKind.String ? pn.GetString() : null,
+                        Description = e.GetProperty("description").GetString() ?? "",
+                        Amount      = e.GetProperty("amount").GetDecimal(),
+                        IsSettled   = e.GetProperty("isSettled").GetBoolean()
+                    });
+                }
+            }
+        }
+        catch (Exception ex) { Toast.Show($"Error loading entries: {ex.Message}"); }
+        _loading = false;
+        StateHasChanged();
+    }
+
+    async Task AddEntryAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_newDescription))
+        {
+            Toast.Show("Description is required.");
+            return;
+        }
+        if (!_newAmount.HasValue || _newAmount.Value <= 0)
+        {
+            Toast.Show("Enter a valid amount.");
+            return;
+        }
+        if (_newType != "Expense" && string.IsNullOrWhiteSpace(_newParty))
+        {
+            Toast.Show(_newType == "Receivable" ? "Customer name is required." : "Vendor name is required.");
+            return;
+        }
+
+        _adding = true;
+        try
+        {
+            var payload = new
+            {
+                entryDate   = _newDate,
+                type        = _newType,
+                partyName   = _newType == "Expense" ? null : _newParty,
+                description = _newDescription,
+                amount      = _newAmount.Value
+            };
+            var res = await Http.PostAsJsonAsync("api/daily-ledger", payload);
+            if (res.IsSuccessStatusCode)
+            {
+                Toast.Show("Entry added.");
+                _newParty = string.Empty;
+                _newDescription = string.Empty;
+                _newAmount = null;
+                await LoadAsync();
+            }
+            else
+            {
+                var content = await res.Content.ReadAsStringAsync();
+                using var doc = JsonDocument.Parse(content);
+                var msg = doc.RootElement.TryGetProperty("message", out var m) ? m.GetString() : "Failed to add entry.";
+                Toast.Show(msg ?? "Failed to add entry.");
+            }
+        }
+        catch (Exception ex) { Toast.Show($"Error: {ex.Message}"); }
+        _adding = false;
+    }
+
+    async Task SettleAsync(LedgerRow row)
+    {
+        try
+        {
+            var res = await Http.PatchAsync($"api/daily-ledger/{row.Id}/settle", null);
+            if (res.IsSuccessStatusCode)
+            {
+                row.IsSettled = true;
+                Toast.Show("Marked as settled.");
+            }
+            else Toast.Show("Failed to update.");
+        }
+        catch (Exception ex) { Toast.Show($"Error: {ex.Message}"); }
+    }
+
+    async Task DeleteAsync(LedgerRow row)
+    {
+        var confirmed = await JS.InvokeAsync<bool>("confirm", $"Delete this entry ({row.Description})?");
+        if (!confirmed) return;
+
+        try
+        {
+            var res = await Http.DeleteAsync($"api/daily-ledger/{row.Id}");
+            if (res.IsSuccessStatusCode)
+            {
+                _entries.Remove(row);
+                Toast.Show("Entry deleted.");
+            }
+            else Toast.Show("Failed to delete.");
+        }
+        catch (Exception ex) { Toast.Show($"Error: {ex.Message}"); }
+    }
+
+    decimal TotalExpensesToday          => _entries.Where(e => e.Type == "Expense" && e.EntryDate.Date == DateTime.Today).Sum(e => e.Amount);
+    decimal TotalOutstandingReceivable  => _entries.Where(e => e.Type == "Receivable" && !e.IsSettled).Sum(e => e.Amount);
+    decimal TotalOutstandingPayable     => _entries.Where(e => e.Type == "Payable" && !e.IsSettled).Sum(e => e.Amount);
+
+    class LedgerRow
+    {
+        public Guid     Id          { get; set; }
+        public DateTime EntryDate   { get; set; }
+        public string   Type        { get; set; } = "";
+        public string?  PartyName   { get; set; }
+        public string   Description { get; set; } = "";
+        public decimal  Amount      { get; set; }
+        public bool     IsSettled   { get; set; }
+    }
+}
+
+@if (!_isAdmin)
+{
+    <div class="card" style="max-width:480px;margin:40px auto;text-align:center;padding:32px;">
+        <h3>Admins only</h3>
+        <p style="color:#6b7280;">Only tenant admins can view the daily ledger.</p>
+    </div>
+}
+else
+{
+    <h2 style="margin-bottom:6px;">📒 Daily Ledger</h2>
+    <p style="color:#6b7280;font-size:13px;margin-bottom:20px;">
+        A simple day book — log today's expenses, what customers still owe you, and what you
+        owe vendors. Kept separate from formal accounting (Chart of Accounts / Journal entries).
+    </p>
+
+    <!-- Summary cards -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:20px;">
+        <div class="card stat-card">
+            <div class="stat-label">Today's expenses</div>
+            <div class="stat-value">Rs @TotalExpensesToday.ToString("N0")</div>
+        </div>
+        <div class="card stat-card">
+            <div class="stat-label">Outstanding receivable</div>
+            <div class="stat-value" style="color:#047857;">Rs @TotalOutstandingReceivable.ToString("N0")</div>
+        </div>
+        <div class="card stat-card">
+            <div class="stat-label">Outstanding payable</div>
+            <div class="stat-value" style="color:#b91c1c;">Rs @TotalOutstandingPayable.ToString("N0")</div>
+        </div>
+    </div>
+
+    <!-- Add entry -->
+    <div class="card" style="margin-bottom:20px;max-width:480px;">
+        <h4 style="margin-bottom:12px;">Add entry</h4>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+            <select class="input" style="width:auto;" @bind="_newType">
+                <option value="Expense">Expense</option>
+                <option value="Receivable">Receivable (customer owes)</option>
+                <option value="Payable">Payable (owed to vendor)</option>
+            </select>
+            <input class="input" type="date" style="width:auto;" value="@_newDate.ToString("yyyy-MM-dd")"
+                   @onchange="e => _newDate = DateTime.TryParse(e.Value?.ToString(), out var d) ? d : DateTime.Today" />
+        </div>
+        @if (_newType != "Expense")
+        {
+            <input class="input full" placeholder="@(_newType == "Receivable" ? "Customer name *" : "Vendor name *")"
+                   @bind="_newParty" style="margin-bottom:8px;" />
+        }
+        <input class="input full" placeholder="Description *" @bind="_newDescription" style="margin-bottom:8px;" />
+        <input class="input full" type="number" min="0" step="0.01" placeholder="Amount (Rs) *"
+               value="@_newAmount" @onchange="e => _newAmount = decimal.TryParse(e.Value?.ToString(), out var a) ? a : (decimal?)null"
+               style="margin-bottom:12px;" />
+        <button class="btn btn-primary" disabled="@_adding" @onclick="AddEntryAsync">
+            @(_adding ? "Adding..." : "+ Add Entry")
+        </button>
+    </div>
+
+    <!-- Filter -->
+    <div style="display:flex;gap:12px;align-items:center;margin-bottom:12px;">
+        <label style="font-size:13px;color:#6b7280;">Show:</label>
+        <select class="input" style="width:auto;" @bind="_filterType" @bind:after="LoadAsync">
+            <option value="">All</option>
+            <option value="Expense">Expenses</option>
+            <option value="Receivable">Receivables</option>
+            <option value="Payable">Payables</option>
+        </select>
+        <button class="btn" @onclick="LoadAsync">↻ Refresh</button>
+    </div>
+
+    <!-- Entries -->
+    @if (_loading)
+    {
+        <div class="spinner"></div>
+    }
+    else if (!_entries.Any())
+    {
+        <div class="card"><p style="color:#9ca3af;">No entries yet.</p></div>
+    }
+    else
+    {
+        <div class="card" style="padding:0;overflow:hidden;">
+            <table class="table" style="margin:0;">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Type</th>
+                        <th>Party</th>
+                        <th>Description</th>
+                        <th>Amount</th>
+                        <th>Status</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in _entries)
+                    {
+                        var (bg, fg) = row.Type switch
+                        {
+                            "Expense"    => ("#fee2e2", "#991b1b"),
+                            "Receivable" => ("#d1fae5", "#065f46"),
+                            _            => ("#fef3c7", "#92400e")
+                        };
+                        <tr>
+                            <td style="color:#6b7280;font-size:13px;">@row.EntryDate.ToString("yyyy-MM-dd")</td>
+                            <td>
+                                <span style="padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600;background:@bg;color:@fg;">
+                                    @row.Type
+                                </span>
+                            </td>
+                            <td>@(row.PartyName ?? "—")</td>
+                            <td>@row.Description</td>
+                            <td>Rs @row.Amount.ToString("N2")</td>
+                            <td>
+                                @if (row.Type == "Expense")
+                                {
+                                    <span style="color:#9ca3af;font-size:12px;">—</span>
+                                }
+                                else if (row.IsSettled)
+                                {
+                                    <span style="color:#065f46;font-size:12px;font-weight:600;">✓ Settled</span>
+                                }
+                                else
+                                {
+                                    <button class="btn" style="padding:2px 10px;font-size:12px;" @onclick="() => SettleAsync(row)">
+                                        Mark @(row.Type == "Receivable" ? "received" : "paid")
+                                    </button>
+                                }
+                            </td>
+                            <td>
+                                <button class="btn" style="padding:2px 8px;font-size:12px;color:#b91c1c;" @onclick="() => DeleteAsync(row)">✕</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}

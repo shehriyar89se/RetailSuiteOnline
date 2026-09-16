@@ -1864,6 +1864,55 @@ namespace RetailSuite.Infrastructure.Migrations
                     b.ToTable("Accounts", (string)null);
                 });
 
+            modelBuilder.Entity("RetailSuite.Modules.Accounting.Entities.DailyLedgerEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("Amount")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<DateTime>("EntryDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsSettled")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("PartyName")
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime?>("SettledAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TenantId", "EntryDate");
+
+                    b.ToTable("DailyLedgerEntries", (string)null);
+                });
+
             modelBuilder.Entity("RetailSuite.Modules.Accounting.Entities.JournalEntry", b =>
                 {
                     b.Property<Guid>("Id")
