@@ -1,0 +1,178 @@
+@page "/{TenantSlug}/admin/accounting/daily-ledger-summary"
+@inherits AdminPageBase
+@inject HttpClient Http
+@inject AuthService AuthSvc
+@inject ToastService Toast
+@using System.Text.Json
+
+@code {
+    bool _loading = true;
+    bool _isAdmin;
+    string _groupBy = "day"; // "day" or "month"
+    DateTime _from;
+    DateTime _to = DateTime.Today;
+
+    decimal _currentOutstandingReceivable;
+    decimal _currentOutstandingPayable;
+    List<SummaryRow> _rows = new();
+
+    protected override void OnInitialized()
+    {
+        _isAdmin = AuthSvc.IsAdmin;
+        _from = DateTime.Today.AddDays(-29); // last 30 days by default
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && _isAdmin)
+            await LoadAsync();
+    }
+
+    async Task SetGroupByAsync(string groupBy)
+    {
+        _groupBy = groupBy;
+        // Widen the default range when switching to monthly so there's more
+        // than a handful of months to look at.
+        if (groupBy == "month") _from = DateTime.Today.AddMonths(-11).AddDays(1 - DateTime.Today.Day);
+        else _from = DateTime.Today.AddDays(-29);
+        await LoadAsync();
+    }
+
+    async Task LoadAsync()
+    {
+        _loading = true;
+        StateHasChanged();
+        try
+        {
+            var url = $"api/daily-ledger/summary?groupBy={_groupBy}&from={_from:yyyy-MM-dd}&to={_to:yyyy-MM-dd}";
+            var json = await Http.GetStringAsync(url);
+            using var doc = JsonDocument.Parse(json);
+            var data = doc.RootElement.TryGetProperty("data", out var d) ? d : doc.RootElement;
+
+            _currentOutstandingReceivable = data.GetProperty("currentOutstandingReceivable").GetDecimal();
+            _currentOutstandingPayable    = data.GetProperty("currentOutstandingPayable").GetDecimal();
+
+            _rows.Clear();
+            if (data.TryGetProperty("rows", out var rowsEl) && rowsEl.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var r in rowsEl.EnumerateArray())
+                {
+                    _rows.Add(new SummaryRow
+                    {
+                        Period      = r.GetProperty("period").GetString() ?? "",
+                        Expenses    = r.GetProperty("expenses").GetDecimal(),
+                        Receivables = r.GetProperty("receivables").GetDecimal(),
+                        Payables    = r.GetProperty("payables").GetDecimal(),
+                        EntryCount  = r.GetProperty("entryCount").GetInt32()
+                    });
+                }
+            }
+        }
+        catch (Exception ex) { Toast.Show($"Error loading summary: {ex.Message}"); }
+        _loading = false;
+        StateHasChanged();
+    }
+
+    decimal TotalExpenses    => _rows.Sum(r => r.Expenses);
+    decimal TotalReceivables => _rows.Sum(r => r.Receivables);
+    decimal TotalPayables    => _rows.Sum(r => r.Payables);
+
+    class SummaryRow
+    {
+        public string  Period      { get; set; } = "";
+        public decimal Expenses    { get; set; }
+        public decimal Receivables { get; set; }
+        public decimal Payables    { get; set; }
+        public int     EntryCount  { get; set; }
+    }
+}
+
+@if (!_isAdmin)
+{
+    <div class="card" style="max-width:480px;margin:40px auto;text-align:center;padding:32px;">
+        <h3>Admins only</h3>
+        <p style="color:#6b7280;">Only tenant admins can view this report.</p>
+    </div>
+}
+else
+{
+    <h2 style="margin-bottom:6px;">📊 Daily Ledger Summary</h2>
+    <p style="color:#6b7280;font-size:13px;margin-bottom:20px;">
+        Totals per day or month from the <a href="@($"/{TenantSlug}/admin/accounting/daily-ledger")">Daily ledger</a>.
+    </p>
+
+    <!-- Current outstanding — as of today, independent of the date range below -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:20px;">
+        <div class="card stat-card">
+            <div class="stat-label">Outstanding receivable (today)</div>
+            <div class="stat-value" style="color:#047857;">Rs @_currentOutstandingReceivable.ToString("N0")</div>
+        </div>
+        <div class="card stat-card">
+            <div class="stat-label">Outstanding payable (today)</div>
+            <div class="stat-value" style="color:#b91c1c;">Rs @_currentOutstandingPayable.ToString("N0")</div>
+        </div>
+    </div>
+
+    <!-- Controls -->
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:16px;">
+        <div class="view-toggle-group" style="display:flex;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
+            <button type="button" class="btn" style="border:0;border-radius:0;@(_groupBy == "day" ? "background:#111827;color:#fff;" : "")"
+                    @onclick='() => SetGroupByAsync("day")'>Daily</button>
+            <button type="button" class="btn" style="border:0;border-radius:0;@(_groupBy == "month" ? "background:#111827;color:#fff;" : "")"
+                    @onclick='() => SetGroupByAsync("month")'>Monthly</button>
+        </div>
+        <label style="font-size:13px;color:#6b7280;">From</label>
+        <input class="input" type="date" style="width:auto;" value="@_from.ToString("yyyy-MM-dd")"
+               @onchange="e => _from = DateTime.TryParse(e.Value?.ToString(), out var d) ? d : _from" />
+        <label style="font-size:13px;color:#6b7280;">To</label>
+        <input class="input" type="date" style="width:auto;" value="@_to.ToString("yyyy-MM-dd")"
+               @onchange="e => _to = DateTime.TryParse(e.Value?.ToString(), out var d) ? d : _to" />
+        <button class="btn btn-primary" @onclick="LoadAsync">Apply</button>
+    </div>
+
+    @if (_loading)
+    {
+        <div class="spinner"></div>
+    }
+    else if (!_rows.Any())
+    {
+        <div class="card"><p style="color:#9ca3af;">No entries in this range.</p></div>
+    }
+    else
+    {
+        <div class="card" style="padding:0;overflow:hidden;">
+            <table class="table" style="margin:0;">
+                <thead>
+                    <tr>
+                        <th>@(_groupBy == "day" ? "Date" : "Month")</th>
+                        <th class="num">Expenses</th>
+                        <th class="num">Receivables</th>
+                        <th class="num">Payables</th>
+                        <th class="num">Entries</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in _rows)
+                    {
+                        <tr>
+                            <td>@row.Period</td>
+                            <td class="num">Rs @row.Expenses.ToString("N2")</td>
+                            <td class="num" style="color:#047857;">Rs @row.Receivables.ToString("N2")</td>
+                            <td class="num" style="color:#b91c1c;">Rs @row.Payables.ToString("N2")</td>
+                            <td class="num" style="color:#6b7280;">@row.EntryCount</td>
+                        </tr>
+                    }
+                </tbody>
+                <tfoot>
+                    <tr style="font-weight:700;border-top:2px solid #e5e7eb;">
+                        <td>Total</td>
+                        <td class="num">Rs @TotalExpenses.ToString("N2")</td>
+                        <td class="num" style="color:#047857;">Rs @TotalReceivables.ToString("N2")</td>
+                        <td class="num" style="color:#b91c1c;">Rs @TotalPayables.ToString("N2")</td>
+                        <td class="num"></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    }
+}

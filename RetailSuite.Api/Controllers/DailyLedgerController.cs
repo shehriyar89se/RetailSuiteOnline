@@ -64,6 +64,86 @@ public class DailyLedgerController : ControllerBase
     }
 
     // ============================================================
+    //  GET /api/daily-ledger/summary?groupBy=day|month&from=&to=
+    // ============================================================
+    /// <summary>Daily or monthly totals for the report page, plus the current
+    /// (as-of-now, date-range-independent) outstanding receivable/payable so
+    /// the report always shows where things stand today regardless of which
+    /// period you're looking back at.</summary>
+    [HttpGet("summary")]
+    public async Task<IActionResult> Summary([FromQuery] string groupBy = "day", [FromQuery] DateTime? from = null, [FromQuery] DateTime? to = null)
+    {
+        var query = _db.DailyLedgerEntries.AsQueryable();
+        if (from.HasValue) query = query.Where(e => e.EntryDate >= from.Value.Date);
+        if (to.HasValue)   query = query.Where(e => e.EntryDate <= to.Value.Date);
+
+        object rows;
+        if (string.Equals(groupBy, "month", StringComparison.OrdinalIgnoreCase))
+        {
+            var grouped = await query
+                .GroupBy(e => new { e.EntryDate.Year, e.EntryDate.Month })
+                .Select(g => new
+                {
+                    g.Key.Year,
+                    g.Key.Month,
+                    Expenses    = g.Where(x => x.Type == LedgerEntryType.Expense).Sum(x => (decimal?)x.Amount) ?? 0m,
+                    Receivables = g.Where(x => x.Type == LedgerEntryType.Receivable).Sum(x => (decimal?)x.Amount) ?? 0m,
+                    Payables    = g.Where(x => x.Type == LedgerEntryType.Payable).Sum(x => (decimal?)x.Amount) ?? 0m,
+                    EntryCount  = g.Count()
+                })
+                .OrderByDescending(g => g.Year).ThenByDescending(g => g.Month)
+                .ToListAsync();
+
+            rows = grouped.Select(g => new
+            {
+                Period = $"{g.Year:0000}-{g.Month:00}",
+                g.Expenses,
+                g.Receivables,
+                g.Payables,
+                g.EntryCount
+            });
+        }
+        else
+        {
+            var grouped = await query
+                .GroupBy(e => e.EntryDate)
+                .Select(g => new
+                {
+                    Date        = g.Key,
+                    Expenses    = g.Where(x => x.Type == LedgerEntryType.Expense).Sum(x => (decimal?)x.Amount) ?? 0m,
+                    Receivables = g.Where(x => x.Type == LedgerEntryType.Receivable).Sum(x => (decimal?)x.Amount) ?? 0m,
+                    Payables    = g.Where(x => x.Type == LedgerEntryType.Payable).Sum(x => (decimal?)x.Amount) ?? 0m,
+                    EntryCount  = g.Count()
+                })
+                .OrderByDescending(g => g.Date)
+                .ToListAsync();
+
+            rows = grouped.Select(g => new
+            {
+                Period = g.Date.ToString("yyyy-MM-dd"),
+                g.Expenses,
+                g.Receivables,
+                g.Payables,
+                g.EntryCount
+            });
+        }
+
+        var currentOutstandingReceivable = await _db.DailyLedgerEntries
+            .Where(e => e.Type == LedgerEntryType.Receivable && !e.IsSettled)
+            .SumAsync(e => (decimal?)e.Amount) ?? 0m;
+        var currentOutstandingPayable = await _db.DailyLedgerEntries
+            .Where(e => e.Type == LedgerEntryType.Payable && !e.IsSettled)
+            .SumAsync(e => (decimal?)e.Amount) ?? 0m;
+
+        return Ok(ApiResponse<object>.Ok(new
+        {
+            CurrentOutstandingReceivable = currentOutstandingReceivable,
+            CurrentOutstandingPayable    = currentOutstandingPayable,
+            Rows = rows
+        }));
+    }
+
+    // ============================================================
     //  POST /api/daily-ledger
     // ============================================================
     [HttpPost]
