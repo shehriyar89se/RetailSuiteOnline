@@ -50,6 +50,17 @@ namespace RetailSuite.Infrastructure.Modules.Identity.Entities
         // ---- Mutators used by user-management endpoints --------------------
 
         public void SetFullName(string? fullName) => FullName = string.IsNullOrWhiteSpace(fullName) ? null : fullName.Trim();
+
+        /// <summary>Change the login email. Resets verification — a changed address hasn't
+        /// been proven yet, even if the old one was. Uniqueness is the caller's responsibility.</summary>
+        public void SetEmail(string newEmail)
+        {
+            if (string.IsNullOrWhiteSpace(newEmail))
+                throw new ArgumentException("Email is required.", nameof(newEmail));
+            Email           = newEmail.Trim().ToLowerInvariant();
+            IsEmailVerified = false;
+            EmailVerifiedAt = null;
+        }
         public void SetRole(UserRole role) => Role = role;
         public void Activate()   => IsActive = true;
         public void Deactivate() => IsActive = false;

@@ -289,6 +289,51 @@ public class TenantsController : ControllerBase
     }
 
     // ---------------------------------------------------------------
+    // PATCH /api/tenants/{id}/admin-email  — SuperAdmin: change the
+    // tenant's admin login email (distinct from Tenant.BillingEmail,
+    // which is only for billing notifications).
+    // ---------------------------------------------------------------
+    [HttpPatch("{id:guid}/admin-email")]
+    [Authorize(Policy = "SuperAdminOnly")]
+    public async Task<IActionResult> UpdateAdminEmail(Guid id, [FromBody] UpdateAdminEmailRequest request)
+    {
+        var tenant = await _db.Tenants.FirstOrDefaultAsync(t => t.Id == id);
+        if (tenant == null)
+            return NotFound(ApiResponse<object>.Fail("Tenant not found."));
+
+        if (string.IsNullOrWhiteSpace(request.Email))
+            return BadRequest(ApiResponse<object>.Fail("Email is required."));
+
+        var normalizedEmail = request.Email.Trim().ToLowerInvariant();
+
+        var adminUser = await _db.Users
+            .IgnoreQueryFilters()
+            .Where(u => u.TenantId == id && u.Role == UserRole.Admin && !u.IsDeleted)
+            .OrderBy(u => u.CreatedAt)
+            .FirstOrDefaultAsync();
+
+        if (adminUser == null)
+            return NotFound(ApiResponse<object>.Fail("This tenant has no admin user."));
+
+        if (adminUser.Email == normalizedEmail)
+            return Ok(ApiResponse<object>.Ok(new { adminUser.Email })); // unchanged — no-op
+
+        var conflict = await _db.Users
+            .IgnoreQueryFilters()
+            .AnyAsync(u => u.Email == normalizedEmail && u.Id != adminUser.Id && !u.IsDeleted);
+        if (conflict)
+            return Conflict(ApiResponse<object>.Fail("This email is already in use by another account."));
+
+        var oldEmail = adminUser.Email;
+        adminUser.SetEmail(normalizedEmail);
+        await _db.SaveChangesAsync();
+
+        await LogAuditAsync(id, "AdminEmailChanged", $"{oldEmail} -> {normalizedEmail}");
+
+        return Ok(ApiResponse<object>.Ok(new { adminUser.Email }));
+    }
+
+    // ---------------------------------------------------------------
     // POST /api/tenants/{id}/archive  — SuperAdmin: hide from the default list
     // (fully reversible, no data is removed)
     // ---------------------------------------------------------------
@@ -674,6 +719,11 @@ public class UpdateTenantRequest
     public string  Subdomain    { get; set; } = string.Empty;
     public string? BillingEmail { get; set; }
     public string? CountryCode  { get; set; }
+}
+
+public class UpdateAdminEmailRequest
+{
+    public string Email { get; set; } = string.Empty;
 }
 
 public class CreateInvoiceRequest

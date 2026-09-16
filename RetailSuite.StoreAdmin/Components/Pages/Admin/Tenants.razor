@@ -35,6 +35,9 @@
     string _editSubdomain    = string.Empty;
     string _editBillingEmail = string.Empty;
     string _editCountryCode  = string.Empty;
+    string _editAdminEmail   = string.Empty; // the tenant's admin login email — distinct from BillingEmail
+    string _originalAdminEmail = string.Empty;
+    bool   _loadingAdminEmail;
 
     IEnumerable<TenantRow> Filtered =>
         string.IsNullOrWhiteSpace(_search)
@@ -245,7 +248,7 @@
         _creating = false;
     }
 
-    void OpenEdit(TenantRow t)
+    async Task OpenEditAsync(TenantRow t)
     {
         _editingId        = t.Id;
         _editName         = t.Name;
@@ -253,6 +256,28 @@
         _editBillingEmail = t.BillingEmail ?? string.Empty;
         _editCountryCode  = t.CountryCode;
         _showCreate        = false; // don't show both forms at once
+
+        _editAdminEmail = _originalAdminEmail = string.Empty;
+        _loadingAdminEmail = true;
+        try
+        {
+            var json = await Http.GetStringAsync($"api/tenants/{t.Id}/users");
+            using var doc = JsonDocument.Parse(json);
+            var arr = doc.RootElement.TryGetProperty("data", out var d) ? d : doc.RootElement;
+            if (arr.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var u in arr.EnumerateArray())
+                {
+                    if (u.TryGetProperty("role", out var r) && r.GetString() == "Admin")
+                    {
+                        _editAdminEmail = _originalAdminEmail = u.GetProperty("email").GetString() ?? "";
+                        break;
+                    }
+                }
+            }
+        }
+        catch { /* non-fatal — field just stays empty and can still be set */ }
+        _loadingAdminEmail = false;
     }
 
     void CancelEdit() => _editingId = null;
@@ -282,7 +307,9 @@
 
             if (res.IsSuccessStatusCode)
             {
-                Toast.Show("Tenant updated.");
+                var emailOk = await SaveAdminEmailIfChangedAsync();
+
+                Toast.Show(emailOk ? "Tenant updated." : "Tenant details saved, but the admin email change failed — see above.");
                 _editingId = null;
                 await LoadTenantsAsync();
             }
@@ -298,6 +325,38 @@
             Toast.Show($"Error: {ex.Message}");
         }
         _saving = false;
+    }
+
+    /// <summary>Returns true if there was nothing to change or the change succeeded;
+    /// false only when an actual attempted change failed (a toast is shown either way).</summary>
+    async Task<bool> SaveAdminEmailIfChangedAsync()
+    {
+        var newEmail = _editAdminEmail.Trim();
+        if (newEmail.Equals(_originalAdminEmail, StringComparison.OrdinalIgnoreCase))
+            return true; // unchanged — nothing to do
+
+        if (string.IsNullOrWhiteSpace(newEmail))
+        {
+            Toast.Show("Admin email can't be blank — left it unchanged.");
+            return false;
+        }
+
+        try
+        {
+            var res = await Http.PatchAsJsonAsync($"api/tenants/{_editingId}/admin-email", new { email = newEmail });
+            if (res.IsSuccessStatusCode) return true;
+
+            var content = await res.Content.ReadAsStringAsync();
+            using var doc = JsonDocument.Parse(content);
+            var msg = doc.RootElement.TryGetProperty("message", out var m) ? m.GetString() : "Failed to update admin email.";
+            Toast.Show(msg ?? "Failed to update admin email.");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            Toast.Show($"Error updating admin email: {ex.Message}");
+            return false;
+        }
     }
 
     // Statuses a SuperAdmin can manually assign (mirrors TenantStatus.ManuallyAssignable
@@ -481,7 +540,18 @@
         <input class="input full" placeholder="Billing Email"
                type="email" @bind="_editBillingEmail" style="margin-bottom:8px;" />
         <input class="input full" placeholder="Country Code (e.g. PK)"
-               @bind="_editCountryCode" style="margin-bottom:12px;" maxlength="2" />
+               @bind="_editCountryCode" style="margin-bottom:8px;" maxlength="2" />
+
+        <label style="display:block;font-size:12px;font-weight:600;color:#6b7280;margin-bottom:4px;">
+            Admin login email @(_loadingAdminEmail ? "(loading...)" : "")
+        </label>
+        <input class="input full" placeholder="Admin Email *"
+               type="email" @bind="_editAdminEmail" disabled="@_loadingAdminEmail" style="margin-bottom:4px;" />
+        <p style="font-size:11px;color:#9ca3af;margin:0 0 12px;">
+            This is the tenant's own login, not the billing email above. Changing it resets
+            email verification for that account.
+        </p>
+
         <div style="display:flex;gap:8px;">
             <button class="btn btn-primary" @onclick="SaveEditAsync" disabled="@_saving">
                 @(_saving ? "Saving..." : "Save Changes")
@@ -558,7 +628,7 @@ else
                             </select>
                         </td>
                         <td>
-                            <button class="btn" style="padding:3px 10px;font-size:12px;" @onclick="() => OpenEdit(t)">Edit</button>
+                            <button class="btn" style="padding:3px 10px;font-size:12px;" @onclick="() => OpenEditAsync(t)">Edit</button>
                         </td>
                         <td>
                             @if (t.IsArchived)
