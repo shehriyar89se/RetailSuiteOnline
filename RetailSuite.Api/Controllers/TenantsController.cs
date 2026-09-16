@@ -151,6 +151,26 @@ public class TenantsController : ControllerBase
         if (await _db.Tenants.AnyAsync(t => t.Subdomain == request.Subdomain))
             return Conflict(ApiResponse<object>.Fail("Subdomain is already taken."));
 
+        var normalizedEmail = request.AdminEmail.Trim().ToLowerInvariant();
+        var existingUser = await _db.Users
+            .IgnoreQueryFilters()
+            .Where(u => u.Email == normalizedEmail && !u.IsDeleted)
+            .Select(u => new { u.TenantId })
+            .FirstOrDefaultAsync();
+
+        if (existingUser != null)
+        {
+            var existingTenantName = await _db.Tenants
+                .IgnoreQueryFilters()
+                .Where(t => t.Id == existingUser.TenantId)
+                .Select(t => t.Name)
+                .FirstOrDefaultAsync();
+            return Conflict(ApiResponse<object>.Fail(
+                existingTenantName != null
+                    ? $"This email is already used by an existing tenant ({existingTenantName}). Use a different admin email."
+                    : "This email is already in use. Use a different admin email."));
+        }
+
         var strategy = _db.Database.CreateExecutionStrategy();
         var result = await strategy.ExecuteAsync(async () =>
         {
