@@ -8,6 +8,11 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <!-- Suppress 1591 ("missing XML on public member") so undocumented endpoints don't fail the build. -->
     <NoWarn>$(NoWarn);1591</NoWarn>
+    <!-- Workstation GC instead of the multi-core default. Server GC keeps a heap
+         per CPU core and is slow to hand memory back, which is wasteful when
+         several apps share one App Service plan at low traffic. Revisit if
+         sustained concurrent load ever makes throughput matter more than RAM. -->
+    <ServerGarbageCollection>false</ServerGarbageCollection>
   </PropertyGroup>
 
   <ItemGroup>

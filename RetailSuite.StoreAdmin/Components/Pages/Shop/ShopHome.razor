@@ -6,6 +6,7 @@
 @inject ToastService Toast
 @inject ApiUrlService Api
 @inject IJSRuntime JS
+@implements IDisposable
 @using System.Text.Json
 
 <section class="shop-hero">
@@ -678,6 +679,11 @@
         _searchTimer.AutoReset = false;
         _searchTimer.Start();
     }
+
+    /// <summary>A search typed just before navigating away leaves a live timer whose
+    /// callback captures this component — disposing here keeps it from holding the
+    /// component (and its scoped services) alive after the circuit moves on.</summary>
+    public void Dispose() => _searchTimer?.Dispose();
 
     void GoToProduct(Guid id) => Nav.NavigateTo($"/store/{TenantSlug}/product/{id}");
 

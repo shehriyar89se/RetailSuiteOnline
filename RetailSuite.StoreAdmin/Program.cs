@@ -4,7 +4,17 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
-    .AddInteractiveServerComponents();
+    .AddInteractiveServerComponents(options =>
+    {
+        // Every storefront page view opens a Blazor circuit, and the storefront is
+        // public — crawlers and uptime checks park circuits in memory just by
+        // hitting it. The defaults (100 circuits kept for 3 minutes) are sized for
+        // an app where disconnects are mostly real users on flaky connections, so
+        // they're wasteful here. A minute still covers a genuine network blip and
+        // lets a shopper resume mid-cart; it only gives up on tabs that are gone.
+        options.DisconnectedCircuitMaxRetained      = 20;
+        options.DisconnectedCircuitRetentionPeriod  = TimeSpan.FromMinutes(1);
+    });
 
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<ToastService>();
