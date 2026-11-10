@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Contact — ITECH MICROSYSTEMS</title>
+    <meta name="description" content="Get in touch with ITECH MICROSYSTEMS to discuss your software or IT project." />
+    <link rel="icon" href="/favicon.ico" />
+    <link rel="stylesheet" href="/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="/css/site.css" />
+</head>
+<body>
+    <header class="site-header">
+        <nav class="navbar navbar-expand-md">
+            <div class="container">
+                <a class="navbar-brand" href="/">
+                    <span class="brand-mark">IM</span>
+                    <span class="brand-text">ITECH <strong>MICROSYSTEMS</strong></span>
+                </a>
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav"
+                        aria-controls="mainNav" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="collapse navbar-collapse justify-content-end" id="mainNav">
+                    <ul class="navbar-nav align-items-md-center">
+                        <li class="nav-item"><a class="nav-link" href="/">Home</a></li>
+                        <li class="nav-item"><a class="nav-link" href="/services">Services</a></li>
+                        <li class="nav-item"><a class="nav-link" href="/about">About</a></li>
+                        <li class="nav-item">
+                            <a class="btn btn-cta" href="/contact">Contact us</a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <main>
+<section class="page-hero">
+    <div class="container">
+        <span class="eyebrow">Contact</span>
+        <h1>Let's talk about your project</h1>
+        <p class="lead">Tell us what you're trying to solve — we'll get back to you with next steps.</p>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container">
+        <div class="row g-5">
+            <div class="col-lg-5">
+                <h2>Contact details</h2>
+                <ul class="contact-details">
+                    <li>
+                        <span class="contact-label">Email</span>
+                        <a href="mailto:info@itechmicrosystems.com">info@itechmicrosystems.com</a>
+                    </li>
+                    <li>
+                        <span class="contact-label">Phone</span>
+                        <a href="tel:+923132472099">0313 2472099</a>
+                    </li>
+                </ul>
+            </div>
+
+            <div class="col-lg-7">
+                <div class="alert alert-success d-none" role="alert" id="contactSuccess">
+                    Thanks — your message has been received. We'll get back to you soon.
+                </div>
+                <div class="alert alert-danger d-none" role="alert" id="contactError">
+                    Sorry, your message couldn't be sent just now. Please email
+                    <a href="mailto:info@itechmicrosystems.com">info@itechmicrosystems.com</a>
+                    or call <a href="tel:+923132472099">0313 2472099</a> instead.
+                </div>
+
+                <form id="contactForm" novalidate>
+                    <div class="mb-3">
+                        <label for="Name" class="form-label">Name</label>
+                        <input id="Name" name="Name" type="text" maxlength="120" required
+                               class="form-control" placeholder="Your name" />
+                        <div class="invalid-feedback">Please enter your name.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="Email" class="form-label">Email</label>
+                        <input id="Email" name="Email" type="email" maxlength="200" required
+                               class="form-control" placeholder="you@company.com" />
+                        <div class="invalid-feedback">Please enter a valid email address.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="Phone" class="form-label">Phone <span class="text-muted">(optional)</span></label>
+                        <input id="Phone" name="Phone" type="tel" maxlength="40"
+                               class="form-control" placeholder="+92 XXX XXXXXXX" />
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="Message" class="form-label">Message</label>
+                        <textarea id="Message" name="Message" rows="5" maxlength="2000" required
+                                  class="form-control" placeholder="Tell us about your project"></textarea>
+                        <div class="invalid-feedback">Please enter a message.</div>
+                    </div>
+
+                    <button type="submit" class="btn btn-cta btn-lg" id="contactSubmit">Send message</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</section>
+    </main>
+
+    <footer class="site-footer">
+        <div class="container">
+            <div class="footer-grid">
+                <div>
+                    <div class="brand-text footer-brand">ITECH <strong>MICROSYSTEMS</strong></div>
+                    <p class="footer-legal">ITECH MICROSYSTEMS (SMC-PRIVATE) LIMITED</p>
+                    <p class="footer-tagline">Software solutions and IT services for organizations of every size.</p>
+                </div>
+                <div>
+                    <h6>Company</h6>
+                    <ul class="footer-links">
+                        <li><a href="/">Home</a></li>
+                        <li><a href="/services">Services</a></li>
+                        <li><a href="/about">About</a></li>
+                        <li><a href="/contact">Contact</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h6>Get in touch</h6>
+                    <ul class="footer-links">
+                        <li><a href="mailto:info@itechmicrosystems.com">info@itechmicrosystems.com</a></li>
+                        <li><a href="tel:+923132472099">0313 2472099</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                &copy; <span data-current-year>2026</span> ITECH MICROSYSTEMS (SMC-PRIVATE) LIMITED. All rights reserved.
+            </div>
+        </div>
+    </footer>
+
+    <script src="/js/bootstrap.bundle.min.js"></script>
+    <script src="/js/site.js"></script>
+    <script src="/js/contact.js"></script>
+</body>
+</html>

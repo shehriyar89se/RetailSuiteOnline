@@ -1,0 +1,7 @@
+{
+  "name": "itechmicrosystems-api",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Contact form endpoint for the ITECH MICROSYSTEMS website. No dependencies - uses the Node 18+ built-in fetch.",
+  "engines": { "node": ">=18" }
+}

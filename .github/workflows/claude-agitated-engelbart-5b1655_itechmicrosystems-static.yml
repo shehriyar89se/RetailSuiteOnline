@@ -1,0 +1,57 @@
+# Deploys the ITECH MICROSYSTEMS marketing site to Azure Static Web Apps.
+#
+# This replaces the App Service deploy (claude-agitated-engelbart-5b1655_itechmicrosystems.yml).
+# The site is plain HTML now, so there's no .NET build step — the files are
+# uploaded as-is, and the contact form runs as a managed Azure Function from
+# the api/ folder. Static Web Apps' free tier covers both.
+#
+# Required repository secret: AZURE_STATIC_WEB_APPS_API_TOKEN_ITECH
+# (Azure portal -> your Static Web App -> Manage deployment token)
+name: Deploy ITECH site to Azure Static Web Apps
+
+on:
+  push:
+    branches:
+      - claude/agitated-engelbart-5b1655
+    paths:
+      - 'itechmicrosystems-site/**'
+      - '.github/workflows/claude-agitated-engelbart-5b1655_itechmicrosystems-static.yml'
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches:
+      - claude/agitated-engelbart-5b1655
+  workflow_dispatch:
+
+jobs:
+  build_and_deploy:
+    if: github.event_name != 'pull_request' || github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    name: Build and Deploy
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Build And Deploy
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_ITECH }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: upload
+          # Site root — already plain HTML, so nothing to compile.
+          app_location: 'itechmicrosystems-site'
+          api_location: 'itechmicrosystems-site/api'
+          # Empty means "app_location is already the finished output".
+          output_location: ''
+          skip_app_build: true
+
+  close_pull_request:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    name: Close Pull Request
+    steps:
+      - name: Close Pull Request
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN_ITECH }}
+          action: close
